@@ -124,6 +124,17 @@ static Key keys[] = {
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
+
+	/* MULTIMEDIA KEYS */
+	{ 0, XF86XK_AudioMute,          spawn, SHCMD("pamixer -t") },
+	{ 0, XF86XK_AudioRaiseVolume,   spawn, SHCMD("pamixer -i 5") },
+	{ 0, XF86XK_AudioLowerVolume,   spawn, SHCMD("pamixer -d 5") },
+	{ 0, XF86XK_AudioMicMute,	    spawn, SHCMD("pactl set-source-mute @DEFAULT_SOURCE@ toggle") },
+	{ 0, XF86XK_MonBrightnessUp,	spawn, SHCMD("xbacklight -inc 15") },
+	{ 0, XF86XK_MonBrightnessDown,	spawn, SHCMD("xbacklight -dec 15") },
+
+	/* PROGRAMS */
+	{ 0, XK_Print,                  spawn, SHCMD("flameshot gui") },
 };
 
 /* button definitions */
