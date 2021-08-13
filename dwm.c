@@ -105,7 +105,7 @@ struct Client {
 	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	int bw, oldbw;
 	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, issticky, noswallow;
+	int isfixed, iscentered, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, issticky, noswallow;
 	pid_t pid;
 	Client *next;
 	Client *snext;
@@ -119,6 +119,7 @@ typedef struct {
 	KeySym keysym;
 	void (*func)(const Arg *);
 	const Arg arg;
+	const char *help;
 } Key;
 
 typedef struct {
@@ -153,6 +154,7 @@ typedef struct {
 	const char *instance;
 	const char *title;
 	unsigned int tags;
+	int iscentered;
 	int isfloating;
 	int isterminal;
 	int noswallow;
@@ -228,6 +230,7 @@ static void seturgent(Client *c, int urg);
 static void showhide(Client *c);
 static void sigchld(int unused);
 static void spawn(const Arg *arg);
+static void spawncwd(const Arg *arg);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tile(Monitor *);
@@ -307,6 +310,8 @@ static xcb_connection_t *xcon;
 struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 
 /* function implementations */
+
+
 void
 applyrules(Client *c)
 {
@@ -317,6 +322,7 @@ applyrules(Client *c)
 	XClassHint ch = { NULL, NULL };
 
 	/* rule matching */
+	c->iscentered = 0;
 	c->isfloating = 0;
 	c->tags = 0;
 	XGetClassHint(dpy, c->win, &ch);
@@ -331,6 +337,7 @@ applyrules(Client *c)
 		{
 			c->isterminal = r->isterminal;
 			c->noswallow  = r->noswallow;
+			c->iscentered = r->iscentered;
 			c->isfloating = r->isfloating;
 			c->tags |= r->tags;
 			for (m = mons; m && m->num != r->monitor; m = m->next);
@@ -1144,6 +1151,10 @@ manage(Window w, XWindowAttributes *wa)
 	updatewindowtype(c);
 	updatesizehints(c);
 	updatewmhints(c);
+	if (c->iscentered) {
+		c->x = c->mon->mx + (c->mon->mw - WIDTH(c)) / 2;
+		c->y = c->mon->my + (c->mon->mh - HEIGHT(c)) / 2;
+	}
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	grabbuttons(c, 0);
 	if (!c->isfloating)
@@ -1824,6 +1835,48 @@ spawn(const Arg *arg)
 	}
 }
 
+#define SpawnCwd_Size 128
+void
+spawncwd(const Arg *arg)
+{
+	char buf[SpawnCwd_Size];
+	FILE *p;
+
+	if (!selmon->sel
+	|| snprintf(buf, SpawnCwd_Size, "pgrep -P %u", selmon->sel->pid) >= SpawnCwd_Size
+	|| (p = popen(buf, "r")) == NULL
+	) {
+		goto failure;
+	}
+
+	unsigned pid;
+	if (fscanf(p, "%u", &pid) != 1)
+		goto failure_close;
+	pclose(p);
+
+	if (snprintf(buf, SpawnCwd_Size, "/proc/%u/cwd", pid) >= SpawnCwd_Size)
+		goto failure;
+
+	if (fork() == 0) {
+		if (dpy)
+			close(ConnectionNumber(dpy));
+		chdir(buf);
+		setsid();
+		execvp(((char**)arg->v)[0], (char **)arg->v);
+		fprintf(stderr, "dwm: execvp %s", ((char **)arg->v)[0]);
+		perror(" failed");
+		exit(EXIT_SUCCESS);
+	}
+
+	return;
+failure_close:
+	pclose(p);
+failure:
+	spawn(arg);
+	return;
+}
+#undef Size
+
 void
 tag(const Arg *arg)
 {
@@ -2225,8 +2278,10 @@ updatewindowtype(Client *c)
 
 	if (state == netatom[NetWMFullscreen])
 		setfullscreen(c, 1);
-	if (wtype == netatom[NetWMWindowTypeDialog])
+	if (wtype == netatom[NetWMWindowTypeDialog]) {
+		c->iscentered = 1;
 		c->isfloating = 1;
+	}
 }
 
 void
